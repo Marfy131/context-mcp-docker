@@ -64,12 +64,35 @@ cp .env.example .env
 
 # Index your documentation
 npm run reindex
+```
 
+#### Option A: Cloudflare Worker
+
+```bash
 # Deploy the MCP server
 cd cloudflare-worker
 npm install
 npm run deploy
 ```
+
+#### Option B: Docker (self-hosted)
+
+The `server/` directory is a self-hostable Node.js server with the same `/mcp`,
+`/search`, and `/health` endpoints, querying the same Pinecone index. It ships
+a ready `Dockerfile`:
+
+```bash
+cd server
+cp .env.example .env   # set PINECONE_API_KEY, PINECONE_INDEX_NAME + provider key
+docker build -t contextmcp-server .
+docker run --rm -p 8787:8787 --env-file .env contextmcp-server
+```
+
+Or one command with Docker Compose (run from `server/`, reads `.env`
+automatically): `docker compose up --build -d`.
+
+No Docker? `npm install && npm start` runs the same server directly on Node 18+.
+See `server/README.md` for endpoints, configuration, and MCP client setup.
 
 ## What Gets Scaffolded
 
@@ -83,7 +106,8 @@ my-docs-mcp/
 │   ├── sources/          # Source fetchers (GitHub, GitLab, local, URL)
 │   ├── config/           # Config schema and loader
 │   └── types/            # TypeScript types
-├── cloudflare-worker/    # MCP server deployment
+├── cloudflare-worker/    # MCP server (Cloudflare Workers)
+├── server/               # Self-hosted Node.js MCP server (Docker)
 ├── scripts/              # Reindex and utility scripts
 ├── config.yaml           # Your configuration
 ├── config.example.yaml   # Example configuration
@@ -104,7 +128,7 @@ my-docs-mcp/
 - **Node.js 18+** is required
 - **Pinecone account** for vector storage
 - **An embedding provider** - OpenAI, Gemini, Cohere, or Voyage API key, or a local [Ollama](https://ollama.com) server (no key)
-- **Cloudflare account** for deployment (optional, for MCP server)
+- **Deployment target** — a Cloudflare account (Worker) _or_ Docker / Node.js 18+ (self-hosted `server/`)
 
 ## How It Works
 

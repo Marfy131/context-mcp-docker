@@ -1,0 +1,99 @@
+# ContextMCP Server with Docker Compose.
+# Supports 100% LOCAL offline operation (Qdrant + Ollama) or Cloud (Pinecone + OpenAI/Gemini).
+#
+# Quick Start (100% Local Offline):
+#   cp .env.example .env
+#   docker compose up --build -d
+#
+# Endpoints:
+#   MCP:    http://localhost:8787/mcp
+#   Search: http://localhost:8787/search
+#   Health: http://localhost:8787/health
+#   Qdrant: http://localhost:6333/dashboard
+
+services:
+  server:
+    build: .
+    image: contextmcp-server
+    container_name: contextmcp-server
+    restart: unless-stopped
+    ports:
+      - '${PORT:-8787}:${PORT:-8787}'
+    # Lets OLLAMA_BASE_URL=http://host.docker.internal:11434 reach an Ollama
+    # server running on the host machine (e.g. for native GPU acceleration).
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    depends_on:
+      - qdrant
+    environment:
+      # --- Server ---
+      PORT: ${PORT:-8787}
+      SERVER_NAME: ${SERVER_NAME:-contextmcp}
+      SERVER_DESCRIPTION: ${SERVER_DESCRIPTION:-Search documentation}
+
+      # --- Vector Database (qdrant | pinecone) ---
+      VECTOR_DB_PROVIDER: ${VECTOR_DB_PROVIDER:-qdrant}
+
+      # Qdrant (100% local default)
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+      QDRANT_COLLECTION_NAME: ${QDRANT_COLLECTION_NAME:-docs}
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+
+      # Pinecone (cloud alternative)
+      PINECONE_API_KEY: ${PINECONE_API_KEY:-}
+      PINECONE_INDEX_NAME: ${PINECONE_INDEX_NAME:-}
+
+      # --- Embedding provider (must match how the index was built) ---
+      # For 100% local, use 'ollama' with 'nomic-embed-text' (768 dims)
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-ollama}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
+
+      # Ollama Base URL:
+      # - Use 'http://host.docker.internal:11434' to use Ollama installed on host (best for GPU access)
+      # - Or use 'http://ollama:11434' to use the containerized Ollama service below
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+
+      # Cloud embedding keys (optional if using Ollama)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      COHERE_API_KEY: ${COHERE_API_KEY:-}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+
+      # --- Search tuning ---
+      DEFAULT_TOP_K: ${DEFAULT_TOP_K:-10}
+      MAX_TOP_K: ${MAX_TOP_K:-20}
+      # Local setups disable rerank by default since Pinecone rerank is cloud-only
+      ENABLE_RERANK: ${ENABLE_RERANK:-false}
+      RERANK_MODEL: ${RERANK_MODEL:-pinecone-rerank-v0}
+      RERANK_FETCH_COUNT: ${RERANK_FETCH_COUNT:-30}
+      MAX_RERANK_CHARS: ${MAX_RERANK_CHARS:-1200}
+
+  # --- Local Vector Database (Qdrant) ---
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: contextmcp-qdrant
+    restart: unless-stopped
+    ports:
+      - '6333:6333'
+      - '6334:6334'
+    volumes:
+      - qdrant_storage:/qdrant/storage
+
+  # --- Local Embedding Service (Ollama - Optional container) ---
+  # If you already have Ollama installed on Windows/Linux host, you don't need this
+  # and can point OLLAMA_BASE_URL to http://host.docker.internal:11434.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: contextmcp-ollama
+    restart: unless-stopped
+    profiles:
+      - with-ollama
+    ports:
+      - '11434:11434'
+    volumes:
+      - ollama_models:/root/.ollama
+
+volumes:
+  qdrant_storage:
+  ollama_models:

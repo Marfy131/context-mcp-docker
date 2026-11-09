@@ -118,8 +118,9 @@ function main(): void {
   results.push({ status: 'pass', label: 'Config file', detail: configPath });
 
   // 3-4. Config parse/validate + embedding consistency + provider key.
+  let raw: any;
   try {
-    const raw = parseYaml(readFileSync(configPath, 'utf-8'));
+    raw = parseYaml(readFileSync(configPath, 'utf-8'));
     results.push(...checkConfig(raw, process.env));
   } catch (error) {
     results.push({
@@ -129,16 +130,18 @@ function main(): void {
     });
   }
 
-  // 5. Vector DB key.
-  // ┌─────────────────────────────────────────────────────────────────────────┐
-  // │ NOTE (future contributors): this is intentionally hardcoded to Pinecone  │
-  // │ because the config schema currently only allows `vectordb.provider:      │
-  // │ 'pinecone'`, so it cannot check the wrong key today. When additional      │
-  // │ vector DB providers are added (see #28), change this to the same          │
-  // │ provider-registry pattern used for embeddings above — select the env var  │
-  // │ from the configured provider rather than assuming Pinecone.               │
-  // └─────────────────────────────────────────────────────────────────────────┘
-  results.push(checkEnvVar('PINECONE_API_KEY', process.env));
+  // 5. Vector DB key / configuration.
+  const vectorDbProvider = raw?.vectordb?.provider || 'pinecone';
+  if (vectorDbProvider === 'qdrant') {
+    const qdrantUrl = process.env.QDRANT_URL || raw?.vectordb?.qdrant?.url || 'http://localhost:6333';
+    results.push({
+      status: 'pass',
+      label: 'Qdrant URL',
+      detail: qdrantUrl,
+    });
+  } else {
+    results.push(checkEnvVar('PINECONE_API_KEY', process.env));
+  }
 
   render(results);
   summarise(results);

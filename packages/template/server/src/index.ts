@@ -21,7 +21,7 @@ import { loadServerConfig, type ServerConfig } from './config.js';
 import { searchDocs, formatResults } from './search.js';
 
 /** Build an MCP server exposing the search_docs tool. */
-export function createMcpServer(pinecone: Pinecone, config: ServerConfig): McpServer {
+export function createMcpServer(pinecone: Pinecone | undefined, config: ServerConfig): McpServer {
   const server = new McpServer({ name: config.serverName, version: '1.0.0' });
 
   server.registerTool(
@@ -182,7 +182,10 @@ function isSearchPath(rawUrl: string | undefined): boolean {
 }
 
 export function startServer(config: ServerConfig = loadServerConfig()) {
-  const pinecone = new Pinecone({ apiKey: config.pineconeApiKey });
+  const pinecone =
+    config.vectorDbProvider === 'pinecone' && config.pineconeApiKey
+      ? new Pinecone({ apiKey: config.pineconeApiKey })
+      : undefined;
 
   const httpServer = createServer((req, res) => {
     void handleRequest(req, res, pinecone, config).catch(error => {
@@ -203,6 +206,7 @@ export function startServer(config: ServerConfig = loadServerConfig()) {
 
   httpServer.listen(config.port, () => {
     console.log(`🚀 ContextMCP server "${config.serverName}" listening on :${config.port}`);
+    console.log(`   Provider: ${config.vectorDbProvider}`);
     console.log(`   MCP:    POST http://localhost:${config.port}/mcp`);
     console.log(`   Search: GET/POST http://localhost:${config.port}/search`);
     console.log(`   Health: GET  http://localhost:${config.port}/health`);
@@ -214,7 +218,7 @@ export function startServer(config: ServerConfig = loadServerConfig()) {
 async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
-  pinecone: Pinecone,
+  pinecone: Pinecone | undefined,
   config: ServerConfig
 ): Promise<void> {
   const url = new URL(req.url || '/', `http://localhost:${config.port}`);

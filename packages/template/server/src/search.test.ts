@@ -54,3 +54,74 @@ describe('formatResults', () => {
     expect(out).toContain('> Results: 0');
   });
 });
+
+describe('searchDocs with Qdrant provider', () => {
+  it('calls Qdrant search endpoint and formats results', async () => {
+    const { searchDocs } = await import('./search.js');
+    const originalFetch = globalThis.fetch;
+    const fetchMock = (globalThis.fetch = ((url: string, init?: RequestInit) => {
+      // Ollama embedding call
+      if (String(url).includes('/api/embed')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ embeddings: [[0.1, 0.2, 0.3]] }), { status: 200 })
+        );
+      }
+      // Qdrant search call
+      if (String(url).includes('/points/search')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              result: [
+                {
+                  id: 'uuid-1',
+                  score: 0.95,
+                  payload: {
+                    documentTitle: 'Local Docs',
+                    heading: 'Setup',
+                    content: 'How to install in docker.',
+                    sourceUrl: 'http://localhost/setup',
+                  },
+                },
+              ],
+            }),
+            { status: 200 }
+          )
+        );
+      }
+      return Promise.reject(new Error(`Unexpected url: ${url}`));
+    }) as unknown as typeof fetch);
+
+    try {
+      const results = await searchDocs(
+        undefined,
+        {
+          port: 8787,
+          serverName: 'test',
+          serverDescription: 'test',
+          vectorDbProvider: 'qdrant',
+          qdrantUrl: 'http://localhost:6333',
+          qdrantCollectionName: 'docs',
+          embeddingProvider: 'ollama',
+          embeddingModel: 'nomic-embed-text',
+          embeddingDimensions: 768,
+          ollamaBaseUrl: 'http://localhost:11434',
+          defaultTopK: 10,
+          maxTopK: 20,
+          enableRerank: false,
+          rerankModel: 'pinecone-rerank-v0',
+          rerankFetchCount: 30,
+          maxRerankChars: 1200,
+        },
+        'how to install',
+        5
+      );
+
+      expect(results).toHaveLength(1);
+      expect(results[0].title).toBe('Local Docs');
+      expect(results[0].content).toBe('How to install in docker.');
+      expect(results[0].score).toBe(0.95);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});

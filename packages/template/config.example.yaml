@@ -8,21 +8,38 @@
 # VECTOR DATABASE
 # =============================================================================
 vectordb:
-  provider: pinecone
-  # Index name in Pinecone (will be created if doesn't exist)
+  # Option A: 100% Local Vector DB via Qdrant (Runs locally in Docker, no cloud required)
+  provider: qdrant
   indexName: my-company-docs
-  pinecone:
-    cloud: aws
-    region: us-east-1
+  qdrant:
+    url: http://localhost:6333
+    # apiKey: ... # optional
+
+  # Option B: Cloud Vector DB via Pinecone
+  # provider: pinecone
+  # indexName: my-company-docs
+  # pinecone:
+  #   cloud: aws
+  #   region: us-east-1
 
 # =============================================================================
 # EMBEDDINGS
 # =============================================================================
 embeddings:
-  # Pick ONE provider. You only need the API key for the provider you choose.
-  #
+  # Option A: 100% Local Embeddings via Ollama (No API key required)
+  provider: ollama
+  model: nomic-embed-text
+  dimensions: 768               # must match the model's output dimension
+  ollama:
+    baseUrl: http://localhost:11434   # optional, this is the default
+
+  # Option B: Cloud Embedding Providers
   # provider: openai            # Requires OPENAI_API_KEY
   # model: text-embedding-3-large
+  # dimensions: 3072
+  #
+  # provider: gemini            # Requires GEMINI_API_KEY
+  # model: gemini-embedding-2-preview
   # dimensions: 3072
   #
   # provider: cohere            # Requires COHERE_API_KEY
@@ -32,16 +49,6 @@ embeddings:
   # provider: voyage            # Requires VOYAGE_API_KEY
   # model: voyage-4
   # dimensions: 1024
-  #
-  # provider: ollama            # No API key — runs against a local Ollama server
-  # model: nomic-embed-text
-  # dimensions: 768             # must match the model's output dimension
-  # ollama:
-  #   baseUrl: http://localhost:11434   # optional, this is the default
-
-  provider: gemini              # Requires GEMINI_API_KEY
-  model: gemini-embedding-2-preview
-  dimensions: 3072
 
 # =============================================================================
 # DOCUMENTATION SOURCES

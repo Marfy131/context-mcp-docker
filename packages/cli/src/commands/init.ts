@@ -44,11 +44,21 @@ function runCommand(command: string, cwd: string): string | null {
 
 function printBanner() {
   console.log('');
-  console.log(chalk.hex('#4e94f8').bold('    ______            __            __  __  _______________'));
-  console.log(chalk.hex('#4e94f8').bold('   / ____/___  ____  / /____  _  __/ /_/  |/  / ____/ __ \\'));
-  console.log(chalk.hex('#4e94f8').bold('  / /   / __ \\/ __ \\/ __/ _ \\| |/_/ __/ /|_/ / /   / /_/ /'));
-  console.log(chalk.hex('#4e94f8').bold(' / /___/ /_/ / / / / /_/  __/>  </ /_/ /  / / /___/ ____/ '));
-  console.log(chalk.hex('#4e94f8').bold(' \\____/\\____/_/ /_/\\__/\\___/_/|_|\\__/_/  /_/\\____/_/      '));
+  console.log(
+    chalk.hex('#4e94f8').bold('    ______            __            __  __  _______________')
+  );
+  console.log(
+    chalk.hex('#4e94f8').bold('   / ____/___  ____  / /____  _  __/ /_/  |/  / ____/ __ \\')
+  );
+  console.log(
+    chalk.hex('#4e94f8').bold('  / /   / __ \\/ __ \\/ __/ _ \\| |/_/ __/ /|_/ / /   / /_/ /')
+  );
+  console.log(
+    chalk.hex('#4e94f8').bold(' / /___/ /_/ / / / / /_/  __/>  </ /_/ /  / / /___/ ____/ ')
+  );
+  console.log(
+    chalk.hex('#4e94f8').bold(' \\____/\\____/_/ /_/\\__/\\___/_/|_|\\__/_/  /_/\\____/_/      ')
+  );
   console.log('');
   console.log(chalk.dim('        Self-hosted MCP server for your documentation'));
   console.log('');
@@ -85,20 +95,39 @@ function printNextSteps(projectName: string) {
   console.log('');
 
   // Step 5: Deploy
-  console.log(chalk.bold.white('  5. Deploy the MCP server'));
+  console.log(chalk.bold.white('  5. Deploy the MCP server (choose one)'));
+  console.log(chalk.dim('     Option A: Cloudflare Worker (managed edge hosting)'));
   console.log(chalk.cyan('     cd cloudflare-worker'));
   console.log(chalk.cyan('     npm install'));
   console.log(chalk.cyan('     wrangler secret put PINECONE_API_KEY'));
   console.log(chalk.cyan('     wrangler secret put OPENAI_API_KEY'));
   console.log(chalk.cyan('     npm run deploy'));
   console.log('');
+  console.log(
+    chalk.dim('     Option B: Docker (self-hosted; also enables local Ollama embeddings)')
+  );
+  console.log(chalk.cyan('     cd server'));
+  console.log(
+    chalk.cyan(
+      '     cp .env.example .env   # set PINECONE_API_KEY, PINECONE_INDEX_NAME + provider key'
+    )
+  );
+  console.log(chalk.cyan('     docker build -t contextmcp-server .'));
+  console.log(chalk.cyan('     docker run --rm -p 8787:8787 --env-file .env contextmcp-server'));
+  console.log(chalk.dim('     # or one command with Docker Compose (reads server/.env):'));
+  console.log(chalk.cyan('     docker compose up --build -d'));
+  console.log('');
 
   console.log(chalk.bold('  ┌─────────────────────────────────────────────────────────────┐'));
   console.log(chalk.bold('  │                        Resources                            │'));
   console.log(chalk.bold('  └─────────────────────────────────────────────────────────────┘'));
   console.log('');
-  console.log(`  ${chalk.dim('Documentation:')}  ${chalk.cyan.underline('https://contextmcp.ai/docs')}`);
-  console.log(`  ${chalk.dim('GitHub:')}         ${chalk.cyan.underline('https://github.com/dodopayments/context-mcp')}`);
+  console.log(
+    `  ${chalk.dim('Documentation:')}  ${chalk.cyan.underline('https://contextmcp.ai/docs')}`
+  );
+  console.log(
+    `  ${chalk.dim('GitHub:')}         ${chalk.cyan.underline('https://github.com/dodopayments/context-mcp')}`
+  );
   console.log('');
 }
 
@@ -162,7 +191,7 @@ export async function initCommand(projectName?: string, options: InitOptions = {
   const templateDir = [
     path.resolve(__dirname, '../template'),
     path.resolve(__dirname, '../../template'),
-  ].find((dir) => fs.existsSync(path.join(dir, 'package.json')));
+  ].find(dir => fs.existsSync(path.join(dir, 'package.json')));
 
   try {
     if (!templateDir) {
@@ -219,7 +248,9 @@ export async function initCommand(projectName?: string, options: InitOptions = {
     if (errorMsg === null) {
       installSpinner.succeed('Dependencies installed');
     } else {
-      installSpinner.warn(chalk.yellow(`Could not install dependencies.\n${errorMsg}\nRun "npm install" manually.`));
+      installSpinner.warn(
+        chalk.yellow(`Could not install dependencies.\n${errorMsg}\nRun "npm install" manually.`)
+      );
     }
   }
 

@@ -739,3 +739,17 @@ export async function withRetry<T>(
   // unreachable, but satisfies TypeScript
   throw new Error('withRetry: exhausted attempts');
 }
+
+// =============================================================================
+// QDRANT VECTOR DB EXPORTS
+// =============================================================================
+
+export {
+  toQdrantPointId,
+  initQdrantCollection,
+  getQdrantStats,
+  clearQdrantCollection,
+  deleteQdrantVectors,
+  upsertQdrantPoints,
+  searchQdrant,
+} from '../vectordb/qdrant.js';

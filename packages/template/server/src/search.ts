@@ -123,28 +123,70 @@ async function rerank(
   }
 }
 
+/** Search Qdrant collection for nearest neighbors via native fetch. */
+async function searchQdrant(
+  config: ServerConfig,
+  queryEmbedding: number[],
+  limit: number
+): Promise<SearchResult[]> {
+  const baseUrl = config.qdrantUrl.replace(/\/$/, '');
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (config.qdrantApiKey) {
+    headers['api-key'] = config.qdrantApiKey;
+  }
+  const res = await fetch(
+    `${baseUrl}/collections/${encodeURIComponent(config.qdrantCollectionName)}/points/search`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        vector: queryEmbedding,
+        limit,
+        with_payload: true,
+        with_vector: false,
+      }),
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Qdrant search failed: ${res.status} ${text}`);
+  }
+  const data = (await res.json()) as {
+    result?: Array<{ score?: number; payload?: Record<string, unknown> }>;
+  };
+  return (data.result ?? []).map(match => mapMatchToSearchResult(match.score, match.payload));
+}
+
 /** Search the documentation index for a query. */
 export async function searchDocs(
-  pinecone: Pinecone,
+  pinecone: Pinecone | undefined,
   config: ServerConfig,
   query: string,
   limit?: number
 ): Promise<SearchResult[]> {
   const returnCount = clampLimit(limit, config.defaultTopK, config.maxTopK);
-  const index = pinecone.index(config.pineconeIndexName);
   const queryEmbedding = await generateQueryEmbedding(config, query);
   const fetchCount = config.enableRerank ? config.rerankFetchCount : returnCount;
 
-  const results = await index.query({
-    vector: queryEmbedding,
-    topK: fetchCount,
-    includeMetadata: true,
-  });
+  let searchResults: SearchResult[];
 
-  const searchResults: SearchResult[] =
-    results.matches?.map(match => mapMatchToSearchResult(match.score, match.metadata)) || [];
+  if (config.vectorDbProvider === 'qdrant') {
+    searchResults = await searchQdrant(config, queryEmbedding, fetchCount);
+  } else {
+    if (!pinecone || !config.pineconeIndexName) {
+      throw new Error('Pinecone client and indexName are required when provider is pinecone');
+    }
+    const index = pinecone.index(config.pineconeIndexName);
+    const results = await index.query({
+      vector: queryEmbedding,
+      topK: fetchCount,
+      includeMetadata: true,
+    });
+    searchResults =
+      results.matches?.map(match => mapMatchToSearchResult(match.score, match.metadata)) || [];
+  }
 
-  if (searchResults.length > 0 && config.enableRerank) {
+  if (searchResults.length > 0 && config.enableRerank && pinecone) {
     return rerank(pinecone, query, searchResults, returnCount, config);
   }
 

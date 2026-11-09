@@ -2,11 +2,23 @@
 
 A long-running Node.js server that serves your documentation search over the
 **Model Context Protocol** (MCP) and a simple REST endpoint. Use this instead
-of the Cloudflare Worker when you want to self-host (Docker, a VM, Fly.io, etc.)
-and/or use a local embedding provider like Ollama.
+of the Cloudflare Worker when you want to self-host (Docker, local laptop, a VM, Fly.io, etc.)
+and/or run 100% offline with a local vector database (Qdrant) and local embeddings (Ollama).
 
-It queries the **same Pinecone index** your `reindex` job populates, so results
-match the Worker deployment.
+It queries the same vector index (Qdrant collection or Pinecone index) your `reindex` job populates.
+
+## 100% Local Offline Quick Start (Docker Compose)
+
+Run the server and local Qdrant vector database together:
+
+```bash
+cp .env.example .env
+docker compose up --build -d
+```
+
+This spins up:
+- **`contextmcp-server`**: Listening on `http://localhost:8787` (`/mcp` and `/search`)
+- **`qdrant`**: Local vector store listening on `http://localhost:6333` (dashboard at `http://localhost:6333/dashboard`)
 
 ## Endpoints
 
@@ -48,7 +60,16 @@ docker build -t contextmcp-server .
 docker run --rm -p 8787:8787 --env-file .env contextmcp-server
 ```
 
-The image runs a healthcheck against `/health`.
+Or with Docker Compose, which reads `.env` automatically via variable mapping
+(this deployment path replaces the Cloudflare Worker entirely):
+
+```bash
+docker compose up --build -d
+docker compose logs -f
+```
+
+`docker-compose.yml` maps every variable from `.env` (see `.env.example`), so
+no other configuration is needed. The image runs a healthcheck against `/health`.
 
 ## Configuration
 

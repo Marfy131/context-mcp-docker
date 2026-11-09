@@ -93,15 +93,24 @@ export const SourceSchema = z
 // MAIN CONFIG SCHEMA
 // =============================================================================
 
+export const VECTOR_DB_PROVIDERS = ['pinecone', 'qdrant'] as const;
+export type VectorDbProvider = (typeof VECTOR_DB_PROVIDERS)[number];
+
 // Vector database settings
 const VectorDbSchema = z.object({
-  provider: z.enum(['pinecone']).default('pinecone'),
+  provider: z.enum(VECTOR_DB_PROVIDERS).default('pinecone'),
   indexName: z.string(),
   namespace: z.string().optional(),
   pinecone: z
     .object({
       cloud: z.enum(['aws', 'gcp', 'azure']).default('aws'),
       region: z.string().default('us-east-1'),
+    })
+    .optional(),
+  qdrant: z
+    .object({
+      url: z.string().default('http://localhost:6333'),
+      apiKey: z.string().optional(),
     })
     .optional(),
 });

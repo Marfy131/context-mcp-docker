@@ -9,8 +9,12 @@ export interface ServerConfig {
   port: number;
   serverName: string;
   serverDescription: string;
-  pineconeApiKey: string;
-  pineconeIndexName: string;
+  vectorDbProvider: 'pinecone' | 'qdrant';
+  pineconeApiKey?: string;
+  pineconeIndexName?: string;
+  qdrantUrl: string;
+  qdrantCollectionName: string;
+  qdrantApiKey?: string;
   embeddingProvider: 'openai' | 'gemini' | 'cohere' | 'voyage' | 'ollama';
   embeddingModel: string;
   embeddingDimensions: number;
@@ -36,14 +40,28 @@ function int(value: string | undefined, fallback: number): number {
  * Build the server config from process.env, throwing on missing required vars.
  */
 export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
+  const rawProvider = env.VECTOR_DB_PROVIDER?.toLowerCase();
+  const vectorDbProvider: 'pinecone' | 'qdrant' =
+    rawProvider === 'qdrant'
+      ? 'qdrant'
+      : rawProvider === 'pinecone'
+        ? 'pinecone'
+        : env.PINECONE_API_KEY
+          ? 'pinecone'
+          : env.QDRANT_URL || env.QDRANT_COLLECTION_NAME
+            ? 'qdrant'
+            : 'pinecone';
+
   const pineconeApiKey = env.PINECONE_API_KEY;
   const pineconeIndexName = env.PINECONE_INDEX_NAME;
 
-  const missing: string[] = [];
-  if (!pineconeApiKey) missing.push('PINECONE_API_KEY');
-  if (!pineconeIndexName) missing.push('PINECONE_INDEX_NAME');
-  if (missing.length > 0) {
-    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+  if (vectorDbProvider === 'pinecone') {
+    const missing: string[] = [];
+    if (!pineconeApiKey) missing.push('PINECONE_API_KEY');
+    if (!pineconeIndexName) missing.push('PINECONE_INDEX_NAME');
+    if (missing.length > 0) {
+      throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+    }
   }
 
   // Validate PORT range up front so an out-of-range value fails with a clear
@@ -54,15 +72,29 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
     throw new Error(`Invalid PORT: ${env.PORT} (must be between 0 and 65535)`);
   }
 
+  const embeddingProvider = (env.EMBEDDING_PROVIDER as ServerConfig['embeddingProvider']) || 'openai';
+  const defaultModel = embeddingProvider === 'ollama' ? 'nomic-embed-text' : 'text-embedding-3-large';
+  const defaultDimensions = embeddingProvider === 'ollama' ? 768 : 3072;
+
+  // By default, rerank is true for Pinecone, but false for local Qdrant unless explicitly requested.
+  const enableRerank =
+    env.ENABLE_RERANK !== undefined
+      ? env.ENABLE_RERANK !== 'false'
+      : vectorDbProvider === 'pinecone';
+
   return {
     port,
     serverName: env.SERVER_NAME || 'contextmcp',
     serverDescription: env.SERVER_DESCRIPTION || 'Search documentation',
-    pineconeApiKey: pineconeApiKey!,
-    pineconeIndexName: pineconeIndexName!,
-    embeddingProvider: (env.EMBEDDING_PROVIDER as ServerConfig['embeddingProvider']) || 'openai',
-    embeddingModel: env.EMBEDDING_MODEL || 'text-embedding-3-large',
-    embeddingDimensions: int(env.EMBEDDING_DIMENSIONS, 3072),
+    vectorDbProvider,
+    pineconeApiKey,
+    pineconeIndexName,
+    qdrantUrl: env.QDRANT_URL || 'http://localhost:6333',
+    qdrantCollectionName: env.QDRANT_COLLECTION_NAME || env.PINECONE_INDEX_NAME || 'docs',
+    qdrantApiKey: env.QDRANT_API_KEY,
+    embeddingProvider,
+    embeddingModel: env.EMBEDDING_MODEL || defaultModel,
+    embeddingDimensions: int(env.EMBEDDING_DIMENSIONS, defaultDimensions),
     openaiApiKey: env.OPENAI_API_KEY,
     geminiApiKey: env.GEMINI_API_KEY,
     cohereApiKey: env.COHERE_API_KEY,
@@ -70,7 +102,7 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
     ollamaBaseUrl: env.OLLAMA_BASE_URL || 'http://localhost:11434',
     defaultTopK: int(env.DEFAULT_TOP_K, 10),
     maxTopK: int(env.MAX_TOP_K, 20),
-    enableRerank: env.ENABLE_RERANK !== 'false',
+    enableRerank,
     rerankModel: env.RERANK_MODEL || 'pinecone-rerank-v0',
     rerankFetchCount: int(env.RERANK_FETCH_COUNT, 30),
     maxRerankChars: int(env.MAX_RERANK_CHARS, 1200),

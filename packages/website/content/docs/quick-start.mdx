@@ -83,6 +83,13 @@ npm run reindex
 
 ### Deploy
 
+Deploy as a Cloudflare Worker (managed edge) or self-host with Docker —
+both serve the same `/mcp` and `/search` endpoints from the same Pinecone index.
+
+<Tabs items={['Cloudflare Workers', 'Docker (self-hosted)']}>
+
+<Tab value="Cloudflare Workers">
+
 ```bash
 cd cloudflare-worker
 wrangler secret put OPENAI_API_KEY
@@ -91,6 +98,29 @@ npm run deploy
 ```
 
 Your server is live at `https://contextmcp.your-subdomain.workers.dev`
+
+</Tab>
+
+<Tab value="Docker (self-hosted)">
+
+```bash
+cd server
+cp .env.example .env   # set PINECONE_API_KEY, PINECONE_INDEX_NAME + provider key
+docker build -t contextmcp-server .
+docker run --rm -p 8787:8787 --env-file .env contextmcp-server
+```
+
+```bash
+curl http://localhost:8787/health   # {"status":"ok", ...}
+```
+
+Or one command — `docker compose up --build -d` (reads `server/.env` automatically).
+
+See [Deployment](/docs/deployment) for details.
+
+</Tab>
+
+</Tabs>
 
 See [Deployment](/docs/deployment) for GitHub Actions auto-reindex.
 

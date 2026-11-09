@@ -31,12 +31,23 @@ cp .env.example .env
 
 # Index your documentation
 npm run reindex
+```
 
-# Edit the cloudflare-worker
-# Deploy the MCP server
+Deploy the MCP server either as a Cloudflare Worker (managed edge) or self-hosted via Docker (the `server/` directory ships a ready Dockerfile — see `server/README.md`).
+
+```bash
+# Deploy the MCP server — Option A: Cloudflare Worker
 cd cloudflare-worker
 npm install
 npm run deploy
+
+# Deploy the MCP server — Option B: Docker (self-hosted)
+cd server
+cp .env.example .env   # set PINECONE_API_KEY, PINECONE_INDEX_NAME + provider key
+docker build -t contextmcp-server .
+docker run --rm -p 8787:8787 --env-file .env contextmcp-server
+# or with Docker Compose (reads server/.env automatically):
+# docker compose up --build -d
 ```
 
 ## What is ContextMCP?

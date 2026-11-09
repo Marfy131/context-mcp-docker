@@ -29,14 +29,26 @@ export const PROVIDER_API_KEY_ENV: Record<string, string> = {
 };
 
 export type EmbeddingProviderName = 'openai' | 'gemini' | 'cohere' | 'voyage' | 'ollama';
+export type VectorDbProviderName = 'pinecone' | 'qdrant';
 
 /**
- * Validate embedding-related environment variables
+ * Validate embedding and vector DB environment variables
  */
-export function validateEmbeddingEnv(provider: EmbeddingProviderName = 'openai'): void {
-  // Ollama runs locally and needs no API key.
+export function validateEmbeddingEnv(
+  provider: EmbeddingProviderName = 'openai',
+  vectorDbProvider: VectorDbProviderName = 'pinecone'
+): void {
+  const required: string[] = [];
   const apiKeyVar = PROVIDER_API_KEY_ENV[provider];
-  const required = apiKeyVar ? [apiKeyVar, 'PINECONE_API_KEY'] : ['PINECONE_API_KEY'];
-  validateEnv(required);
+  if (apiKeyVar) {
+    required.push(apiKeyVar);
+  }
+  // Qdrant can run fully local/unauthenticated; Pinecone requires an API key.
+  if (vectorDbProvider === 'pinecone') {
+    required.push('PINECONE_API_KEY');
+  }
+  if (required.length > 0) {
+    validateEnv(required);
+  }
 }
 

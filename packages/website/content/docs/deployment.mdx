@@ -4,9 +4,13 @@ description: Deploy ContextMCP to production
 icon: Cloud
 ---
 
-## Cloudflare Workers
+ContextMCP can be deployed as a [Cloudflare Worker](#cloudflare-workers)
+(managed, low-latency edge) or [self-hosted as a Docker container](#self-hosted-docker)
+(any VM, container platform, or plain Node.js — including fully-offline setups
+with local Ollama embeddings). Both serve the same `/mcp`, `/search`, and
+`/health` endpoints from the same Pinecone index.
 
-ContextMCP runs on Cloudflare Workers for low-latency edge deployment.
+## Cloudflare Workers
 
 ### Prerequisites
 
@@ -75,6 +79,52 @@ curl "https://your-worker.workers.dev/search?query=authentication&limit=3"
 </Step>
 
 </Steps>
+
+## Self-Hosted (Docker)
+
+The scaffolded `server/` directory is a self-hostable Node.js server with a
+ready multi-stage `Dockerfile` (non-root user, built-in `/health` healthcheck).
+
+### Prerequisites
+
+- Docker, or Node.js 18+ to run without a container
+- Indexed documentation (`npm run reindex` first)
+
+### Run
+
+```bash
+cd server
+cp .env.example .env   # set PINECONE_API_KEY, PINECONE_INDEX_NAME + provider key
+docker build -t contextmcp-server .
+docker run --rm -p 8787:8787 --env-file .env contextmcp-server
+```
+
+Or with Docker Compose — it maps every variable from `server/.env`
+automatically (see `server/docker-compose.yml`) and restarts on reboot:
+
+```bash
+docker compose up --build -d
+```
+
+Without Docker: `npm install && npm start`.
+
+### Verify
+
+```bash
+curl http://localhost:8787/health
+curl "http://localhost:8787/search?query=authentication&limit=3"
+```
+
+<Callout type="info" title="Match your embedding config">
+  `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, and `EMBEDDING_DIMENSIONS` in `server/.env` must match
+  the `embeddings:` section of the `config.yaml` used by `reindex`, or queries will embed into the
+  wrong vector space.
+</Callout>
+
+Self-hosting also enables the `ollama` embedding provider (no API key, fully
+offline) — set `EMBEDDING_PROVIDER=ollama` and optionally `OLLAMA_BASE_URL`.
+Point MCP clients at `http://<host>:8787/mcp`; see `server/README.md` in the
+template for the full endpoint table and Cursor setup example.
 
 ## Custom Domain
 
@@ -157,10 +207,9 @@ To make incremental runs work in CI, persist `data/reindex-manifest.json`
 between runs (commit it, or use an actions cache).
 
 <Callout type="warn" title="Important">
-  `actions/cache` only _writes_ a new entry on a cache **miss**.
-  With a constant `key`, the manifest is saved once and never updated again, so
-  every incremental run would diff against that first, now-stale manifest
-  forever. Use a **rotating key** (unique per run) plus `restore-keys` so each
+  `actions/cache` only _writes_ a new entry on a cache **miss**. With a constant `key`, the manifest
+  is saved once and never updated again, so every incremental run would diff against that first,
+  now-stale manifest forever. Use a **rotating key** (unique per run) plus `restore-keys` so each
   run restores the latest manifest and saves a fresh one:
 </Callout>
 

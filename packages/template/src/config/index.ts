@@ -5,8 +5,8 @@
  */
 
 // Schema and loader
-export { ConfigSchema, SourceSchema } from './schema.js';
-export type { ContextMCPConfig, SourceConfig } from './schema.js';
+export { ConfigSchema, SourceSchema, VECTOR_DB_PROVIDERS } from './schema.js';
+export type { ContextMCPConfig, SourceConfig, VectorDbProvider } from './schema.js';
 export { loadConfig, validateConfig, configExists } from './loader.js';
 
 export {

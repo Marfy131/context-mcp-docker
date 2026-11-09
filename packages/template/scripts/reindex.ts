@@ -28,6 +28,10 @@ import {
   initPineconeIndex,
   clearPineconeIndex,
   deletePineconeVectors,
+  initQdrantCollection,
+  clearQdrantCollection,
+  deleteQdrantVectors,
+  upsertQdrantPoints,
   generateEmbeddingsOpenAI,
   generateEmbeddingsGemini,
   generateEmbeddingsCohere,
@@ -149,14 +153,17 @@ type EmbedClient =
       model: string;
     };
 
+type VectorDbClient =
+  | { provider: 'pinecone'; client: Pinecone }
+  | { provider: 'qdrant'; url: string; apiKey?: string };
+
 async function embedAndUpload(
   chunks: DocChunk[],
-  pinecone: Pinecone,
+  vectorDb: VectorDbClient,
   client: EmbedClient,
   indexName: string,
   batchSize: number
 ): Promise<void> {
-  const index = pinecone.index(indexName);
   const total = chunks.length;
   let uploaded = 0;
 
@@ -209,15 +216,23 @@ async function embedAndUpload(
         break;
     }
 
-    // Convert to Pinecone records
+    // Convert to embedding records
     const records = batch.map((chunk, idx) => chunkToRecord(chunk, embeddings[idx]));
 
-    // Retry connection-level upsert failures (SDK handles 5xx, not these).
-    // upsert is idempotent by id, so retrying is safe.
-    await withRetry(() => index.upsert(records), {
-      label: 'Pinecone upsert',
-      shouldRetry: isRetryableUpsertError,
-    });
+    if (vectorDb.provider === 'qdrant') {
+      await withRetry(
+        () => upsertQdrantPoints(vectorDb.url, indexName, records, vectorDb.apiKey),
+        {
+          label: 'Qdrant upsert',
+        }
+      );
+    } else {
+      const index = vectorDb.client.index(indexName);
+      await withRetry(() => index.upsert(records), {
+        label: 'Pinecone upsert',
+        shouldRetry: isRetryableUpsertError,
+      });
+    }
 
     uploaded += batch.length;
     const percent = Math.round((uploaded / total) * 100);
@@ -291,12 +306,13 @@ async function reindex(): Promise<void> {
   console.log('');
 
   // Initialize clients (unless dry run)
-  let pinecone: Pinecone | undefined;
+  let vectorDb: VectorDbClient | undefined;
   let embedClient: EmbedClient | undefined;
 
   if (!args.dryRun) {
-    validateEmbeddingEnv(config.embeddings.provider);
-    pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY! });
+    validateEmbeddingEnv(config.embeddings.provider, config.vectordb.provider);
+
+    const isQdrant = config.vectordb.provider === 'qdrant';
 
     switch (config.embeddings.provider) {
       case 'gemini':
@@ -340,21 +356,47 @@ async function reindex(): Promise<void> {
         break;
     }
 
-    // Initialize and optionally clear Pinecone
-    const pineconeConfig = config.vectordb.pinecone;
-    await initPineconeIndex(
-      pinecone,
-      config.vectordb.indexName,
-      config.embeddings.dimensions,
-      pineconeConfig?.cloud || 'aws',
-      pineconeConfig?.region || 'us-east-1'
-    );
+    if (isQdrant) {
+      const qdrantUrl = config.vectordb.qdrant?.url || process.env.QDRANT_URL || 'http://localhost:6333';
+      const qdrantApiKey = config.vectordb.qdrant?.apiKey || process.env.QDRANT_API_KEY;
+      vectorDb = { provider: 'qdrant', url: qdrantUrl, apiKey: qdrantApiKey };
 
-    // In incremental mode we never clear — deletions are derived from the diff.
-    if (config.reindex.clearBeforeReindex && !incremental) {
-      console.log('🗑️  Clearing existing vectors...');
-      await clearPineconeIndex(pinecone, config.vectordb.indexName);
-      console.log('');
+      await initQdrantCollection(
+        qdrantUrl,
+        config.vectordb.indexName,
+        config.embeddings.dimensions,
+        qdrantApiKey
+      );
+
+      if (config.reindex.clearBeforeReindex && !incremental) {
+        console.log('🗑️  Clearing existing vectors...');
+        await clearQdrantCollection(
+          qdrantUrl,
+          config.vectordb.indexName,
+          config.embeddings.dimensions,
+          qdrantApiKey
+        );
+        console.log('');
+      }
+    } else {
+      const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY! });
+      vectorDb = { provider: 'pinecone', client: pinecone };
+
+      const pineconeConfig = config.vectordb.pinecone;
+      await initPineconeIndex(
+        pinecone,
+        config.vectordb.indexName,
+        config.embeddings.dimensions,
+        pineconeConfig?.cloud || 'aws',
+        pineconeConfig?.region || 'us-east-1'
+      );
+
+      // In incremental mode we never clear — deletions are derived from the diff.
+      if (config.reindex.clearBeforeReindex && !incremental) {
+        console.log('🗑️  Clearing existing vectors...');
+        await clearPineconeIndex(pinecone, config.vectordb.indexName);
+        console.log('');
+      }
     }
   }
 
@@ -417,7 +459,7 @@ async function reindex(): Promise<void> {
   }
 
   // Upload if not dry run
-  if (!args.dryRun && allChunks.length > 0 && pinecone && embedClient) {
+  if (!args.dryRun && allChunks.length > 0 && vectorDb && embedClient) {
     const manifestPath = path.join(process.cwd(), 'data', 'reindex-manifest.json');
 
     // Fail loudly BEFORE embedding/uploading if two distinct chunk ids sanitize
@@ -474,7 +516,11 @@ async function reindex(): Promise<void> {
         console.log(`🗑️  Deleting ${diff.toDelete.length} stale vector(s)...`);
         // diff.toDelete is already in vector-id space (the manifest is keyed by
         // toVectorId), so pass it straight through without re-sanitizing.
-        await deletePineconeVectors(pinecone, config.vectordb.indexName, diff.toDelete);
+        if (vectorDb.provider === 'qdrant') {
+          await deleteQdrantVectors(vectorDb.url, config.vectordb.indexName, diff.toDelete, vectorDb.apiKey);
+        } else {
+          await deletePineconeVectors(vectorDb.client, config.vectordb.indexName, diff.toDelete);
+        }
         console.log('   ✅ Deleted');
       }
     }
@@ -485,7 +531,7 @@ async function reindex(): Promise<void> {
 
       await embedAndUpload(
         chunksToUpload,
-        pinecone,
+        vectorDb,
         embedClient,
         config.vectordb.indexName,
         config.reindex.batchSize || DEFAULT_BATCH_SIZE

@@ -14,7 +14,14 @@ import { Pinecone } from '@pinecone-database/pinecone';
 import 'dotenv/config';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
-import { clearPineconeIndex, initPineconeIndex, getPineconeStats } from '../src/embeddings/core.js';
+import {
+  clearPineconeIndex,
+  initPineconeIndex,
+  getPineconeStats,
+  initQdrantCollection,
+  getQdrantStats,
+  clearQdrantCollection,
+} from '../src/embeddings/core.js';
 import { loadConfig } from '../src/config/loader.js';
 import { parseCleanArgs, resolveDeletion, isAbortError } from '../src/config/clean-vectors-cli.js';
 
@@ -98,35 +105,46 @@ async function main() {
     console.warn('   Run with --help to see valid options.\n');
   }
 
-  console.log('🗑️  Pinecone Vector Cleanup\n');
+  console.log('🗑️  Vector Database Cleanup\n');
   console.log('═'.repeat(50));
 
   // Load configuration
   const config = loadConfig(args.config);
+  const isQdrant = config.vectordb.provider === 'qdrant';
+  const indexName = config.vectordb.indexName;
+  const qdrantUrl = config.vectordb.qdrant?.url || process.env.QDRANT_URL || 'http://localhost:6333';
+  const qdrantApiKey = config.vectordb.qdrant?.apiKey || process.env.QDRANT_API_KEY;
 
-  // Validate environment
-  if (!process.env.PINECONE_API_KEY) {
-    console.error('❌ PINECONE_API_KEY not set');
-    console.error('   Create a .env file or set the environment variable.');
-    process.exit(1);
+  let pc: Pinecone | undefined;
+  if (!isQdrant) {
+    if (!process.env.PINECONE_API_KEY) {
+      console.error('❌ PINECONE_API_KEY not set');
+      console.error('   Create a .env file or set the environment variable.');
+      process.exit(1);
+    }
+    pc = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
   }
 
-  const pc = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
-
   // Ensure index exists
-  const indexName = config.vectordb.indexName;
-  console.log(`\n📊 Index: ${indexName}`);
-  const pineconeConfig = config.vectordb.pinecone;
-  await initPineconeIndex(
-    pc,
-    indexName,
-    config.embeddings.dimensions,
-    pineconeConfig?.cloud || 'aws',
-    pineconeConfig?.region || 'us-east-1'
-  );
+  console.log(`\n📊 Provider: ${config.vectordb.provider}`);
+  console.log(`📊 Index/Collection: ${indexName}`);
 
-  // Get current stats
-  const beforeStats = await getPineconeStats(pc, indexName);
+  let beforeStats: { vectorCount: number; dimension: number };
+  if (isQdrant) {
+    await initQdrantCollection(qdrantUrl, indexName, config.embeddings.dimensions, qdrantApiKey);
+    beforeStats = await getQdrantStats(qdrantUrl, indexName, qdrantApiKey);
+  } else {
+    const pineconeConfig = config.vectordb.pinecone;
+    await initPineconeIndex(
+      pc!,
+      indexName,
+      config.embeddings.dimensions,
+      pineconeConfig?.cloud || 'aws',
+      pineconeConfig?.region || 'us-east-1'
+    );
+    beforeStats = await getPineconeStats(pc!, indexName);
+  }
+
   console.log(`   Current vectors: ${beforeStats.vectorCount.toLocaleString()}`);
   console.log(`   Dimension: ${beforeStats.dimension}`);
 
@@ -148,13 +166,25 @@ async function main() {
 
   // Clear the index
   console.log('\n🔄 Clearing vectors...');
-  const result = await clearPineconeIndex(pc, indexName);
+  let result: { success: boolean; vectorCount?: number };
+  if (isQdrant) {
+    result = await clearQdrantCollection(
+      qdrantUrl,
+      indexName,
+      config.embeddings.dimensions,
+      qdrantApiKey
+    );
+  } else {
+    result = await clearPineconeIndex(pc!, indexName);
+  }
 
   if (result.success) {
     console.log(`\n✅ Successfully deleted ${result.vectorCount?.toLocaleString() || 0} vectors`);
 
     // Verify
-    const afterStats = await getPineconeStats(pc, indexName);
+    const afterStats = isQdrant
+      ? await getQdrantStats(qdrantUrl, indexName, qdrantApiKey)
+      : await getPineconeStats(pc!, indexName);
     console.log(`   Remaining vectors: ${afterStats.vectorCount.toLocaleString()}`);
   } else {
     console.error('\n❌ Failed to clear vectors');

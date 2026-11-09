@@ -54,4 +54,26 @@ describe('loadServerConfig', () => {
   it('still allows port 0 (OS-assigned ephemeral)', () => {
     expect(loadServerConfig({ ...minimalEnv, PORT: '0' }).port).toBe(0);
   });
+
+  it('loads Qdrant configuration without requiring PINECONE_API_KEY', () => {
+    const config = loadServerConfig({
+      VECTOR_DB_PROVIDER: 'qdrant',
+      QDRANT_URL: 'http://localhost:6333',
+      QDRANT_COLLECTION_NAME: 'local-docs',
+    });
+    expect(config.vectorDbProvider).toBe('qdrant');
+    expect(config.qdrantUrl).toBe('http://localhost:6333');
+    expect(config.qdrantCollectionName).toBe('local-docs');
+    expect(config.enableRerank).toBe(false);
+  });
+
+  it('applies local Ollama defaults for model and dimensions', () => {
+    const config = loadServerConfig({
+      VECTOR_DB_PROVIDER: 'qdrant',
+      EMBEDDING_PROVIDER: 'ollama',
+    });
+    expect(config.embeddingProvider).toBe('ollama');
+    expect(config.embeddingModel).toBe('nomic-embed-text');
+    expect(config.embeddingDimensions).toBe(768);
+  });
 });
