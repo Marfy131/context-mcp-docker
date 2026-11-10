@@ -10,7 +10,7 @@
 vectordb:
   # Option A: 100% Local Vector DB via Qdrant (Runs locally in Docker, no cloud required)
   provider: qdrant
-  indexName: my-company-docs
+  indexName: docs               # must match QDRANT_COLLECTION_NAME in server/.env (default: docs)
   qdrant:
     url: http://localhost:6333
     # apiKey: ... # optional

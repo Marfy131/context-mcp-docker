@@ -8,18 +8,19 @@ and/or run 100% offline with a local vector database (Qdrant) and local embeddin
 It queries the same vector index (Qdrant collection or Pinecone index) your `reindex` job populates.
 
 ## 100% Local Offline Quick Start (Docker Compose)
-
-Run the server and local Qdrant vector database together:
+Run the server, local Qdrant and local Ollama (CPU) together. The embedding
+model `nomic-embed-text:latest` is pulled automatically on first start, so
+nothing besides Docker needs to be installed on the host:
 
 ```bash
 cp .env.example .env
-docker compose up --build -d
+docker compose up --build -d   # first run downloads the model; watch: docker compose logs -f ollama-pull
 ```
 
 This spins up:
-- **`contextmcp-server`**: Listening on `http://localhost:8787` (`/mcp` and `/search`)
-- **`qdrant`**: Local vector store listening on `http://localhost:6333` (dashboard at `http://localhost:6333/dashboard`)
-
+- **`contextmcp-server`**: `http://localhost:8787` (`/mcp` and `/search`); starts only after Ollama is healthy and the model pull finished
+- **`qdrant`**: local vector store on `http://localhost:6333` (dashboard at `http://localhost:6333/dashboard`)
+- **`ollama`**: local embedding server on `http://localhost:11434`, CPU by default; set `OLLAMA_BASE_URL=http://host.docker.internal:11434` in `.env` to use a host-installed Ollama with GPU instead
 ## Endpoints
 
 | Method     | Path      | Description                                                |
